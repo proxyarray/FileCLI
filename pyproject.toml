@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "filecli"
+version = "0.1.0"
+description = "A DOS-inspired, keyboard-driven terminal file manager"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "textual>=0.80,<2",
+  "rich>=13.7",
+  "typer>=0.12",
+  "platformdirs>=4.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+filecli = "filecli.cli:entrypoint"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+asyncio_default_fixture_loop_scope = "function"

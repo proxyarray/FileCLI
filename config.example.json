@@ -1,0 +1,18 @@
+{
+  "theme": "Classic Monochrome",
+  "show_hidden": false,
+  "start_directory": "~",
+  "sort_by": "name",
+  "sort_descending": false,
+  "preview_enabled": true,
+  "confirm_delete": true,
+  "timezone": "Asia/Kolkata",
+  "date_format": "%d-%m-%Y",
+  "clock_24h": true,
+  "relative_dates": false,
+  "calculate_directory_sizes": false,
+  "use_trash": true,
+  "bookmarks": [],
+  "recent_directories": [],
+  "recent_files": []
+}
