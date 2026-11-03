@@ -81,6 +81,8 @@ class DirectoryPanel(Vertical):
         self.selected: set[Path] = set()
         self.visible_paths: list[Path] = []
         self.compact_columns = False
+        self.refresh_generation = 0
+        self.loading = False
 
     def compose(self) -> ComposeResult:
         yield Static(id=f"{self.id}-path", classes="pane-path")

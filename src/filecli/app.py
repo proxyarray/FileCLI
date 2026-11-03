@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -178,7 +179,10 @@ class FileCLI(App[None]):
         background: #202020;
         text-style: bold;
     }
-    DataTable > .datatable--cursor,
+    DataTable > .datatable--cursor {
+        background: #444444;
+        color: #ffffff;
+    }
     DataTable:focus > .datatable--cursor {
         background: #ffffff;
         color: #000000;
@@ -317,12 +321,52 @@ class FileCLI(App[None]):
         selected_path = pane.visible_paths[table.cursor_row] if (
             pane.visible_paths and table.cursor_row is not None and table.cursor_row < len(pane.visible_paths)
         ) else None
-        table.clear()
-        pane.visible_paths.clear()
+        pane.refresh_generation += 1
+        pane.loading = True
+        generation = pane.refresh_generation
+        if self.is_mounted:
+            self._pane_path_label(pane).update(f"{pane.title.upper()}  Loading directory…")
+        if pane is self.left:
+            self._refresh_left_worker(
+                pane, generation, pane.path, selected_path, self.settings.show_hidden,
+                self.settings.sort_by, self.settings.sort_descending,
+            )
+        else:
+            self._refresh_right_worker(
+                pane, generation, pane.path, selected_path, self.settings.show_hidden,
+                self.settings.sort_by, self.settings.sort_descending,
+            )
+
+    @work(thread=True, group="refresh-left", exclusive=True)
+    def _refresh_left_worker(
+        self, pane: DirectoryPanel, generation: int, path: Path, selected_path: Path | None,
+        show_hidden: bool, sort_by: str, descending: bool,
+    ) -> None:
+        self._load_pane_snapshot(
+            pane, generation, path, selected_path, show_hidden, sort_by, descending,
+        )
+
+    @work(thread=True, group="refresh-right", exclusive=True)
+    def _refresh_right_worker(
+        self, pane: DirectoryPanel, generation: int, path: Path, selected_path: Path | None,
+        show_hidden: bool, sort_by: str, descending: bool,
+    ) -> None:
+        self._load_pane_snapshot(
+            pane, generation, path, selected_path, show_hidden, sort_by, descending,
+        )
+
+    def _load_pane_snapshot(
+        self, pane: DirectoryPanel, generation: int, path: Path, selected_path: Path | None,
+        show_hidden: bool, sort_by: str, descending: bool,
+    ) -> None:
         try:
-            entries = list_directory(pane.path, self.settings.show_hidden, self.settings.sort_by, self.settings.sort_descending)
+            entries = list_directory(path, show_hidden, sort_by, descending)
+            rows: list[tuple[Path, bool, str, str, str, str]] = []
             for item in entries:
-                info = item.lstat()
+                try:
+                    info = item.lstat()
+                except OSError:
+                    continue
                 is_directory = item.is_dir() and not item.is_symlink()
                 kind = "DIR" if is_directory else ("LINK" if item.is_symlink() else "FILE")
                 extension = "DIR" if is_directory else ("LINK" if item.is_symlink() else (item.suffix[1:].upper() or "—"))
@@ -331,24 +375,79 @@ class FileCLI(App[None]):
                 modified_date = timestamp[0] if timestamp else ""
                 modified_time = timestamp[1] if len(timestamp) > 1 else ""
                 modified = f"{modified_date} {modified_time}"
-                row_number = len(pane.visible_paths)
-                pane.visible_paths.append(item)
-                is_cursor = selected_path == item and pane is self.active
-                is_selected = item in pane.selected and not is_cursor
-                name = file_name_cell(item, selected=is_selected, cursor=is_cursor)
-                cells = [name, size, modified, kind] if pane.compact_columns else [name, extension, size, modified, kind]
-                if is_selected:
-                    cells = [Text(str(cell), style="white on #444444") for cell in cells]
-                table.add_row(*cells, key=str(item))
-                if selected_path == item:
-                    table.move_cursor(row=row_number)
+                rows.append((item, is_directory, kind, extension, size, modified))
+            self.call_from_thread(
+                self._populate_pane, pane, generation, selected_path, rows, None,
+            )
         except OSError as exc:
-            self.notify(f"Cannot read {pane.path}: {exc}", severity="error", timeout=5)
+            self.call_from_thread(self._populate_pane, pane, generation, selected_path, [], str(exc))
+
+    def _populate_pane(
+        self, pane: DirectoryPanel, generation: int, selected_path: Path | None,
+        rows: list[tuple[Path, bool, str, str, str, str]], error: str | None,
+    ) -> None:
+        if generation != pane.refresh_generation or not self.is_mounted:
+            return
+        if error:
+            self.notify(f"Cannot read {pane.path}: {error}", severity="error", timeout=5)
+        pane.loading = False
+        current_selection = self._selected_path(pane)
+        available = {row[0] for row in rows}
+        if current_selection in available:
+            selected_path = current_selection
+        self._populate_pane_worker(pane, generation, selected_path, rows, error)
+
+    @work(group="populate-left", exclusive=True)
+    async def _populate_left_worker(
+        self, pane: DirectoryPanel, generation: int, selected_path: Path | None,
+        rows: list[tuple[Path, bool, str, str, str, str]], error: str | None,
+    ) -> None:
+        await self._populate_pane_rows(pane, generation, selected_path, rows)
+
+    @work(group="populate-right", exclusive=True)
+    async def _populate_right_worker(
+        self, pane: DirectoryPanel, generation: int, selected_path: Path | None,
+        rows: list[tuple[Path, bool, str, str, str, str]], error: str | None,
+    ) -> None:
+        await self._populate_pane_rows(pane, generation, selected_path, rows)
+
+    def _populate_pane_worker(
+        self, pane: DirectoryPanel, generation: int, selected_path: Path | None,
+        rows: list[tuple[Path, bool, str, str, str, str]], error: str | None,
+    ) -> None:
+        if pane is self.left:
+            self._populate_left_worker(pane, generation, selected_path, rows, error)
+        else:
+            self._populate_right_worker(pane, generation, selected_path, rows, error)
+
+    async def _populate_pane_rows(
+        self, pane: DirectoryPanel, generation: int, selected_path: Path | None,
+        rows: list[tuple[Path, bool, str, str, str, str]],
+    ) -> None:
+        table = self._table(pane)
+        table.clear()
+        pane.visible_paths.clear()
+        for index, (item, is_directory, kind, extension, size, modified) in enumerate(rows):
+            if generation != pane.refresh_generation:
+                return
+            is_cursor = selected_path == item and pane is self.active
+            is_selected = item in pane.selected and not is_cursor
+            name = file_name_cell(item, selected=is_selected, cursor=is_cursor)
+            cells = [name, size, modified, kind] if pane.compact_columns else [name, extension, size, modified, kind]
+            if is_selected:
+                cells = [Text(str(cell), style="white on #444444") for cell in cells]
+            table.add_row(*cells, key=str(item))
+            pane.visible_paths.append(item)
+            if selected_path == item:
+                table.move_cursor(row=index)
+            if index % 250 == 249:
+                await asyncio.sleep(0)
         width = max(12, pane.size.width - 5)
         path_text = str(pane.path)
         if len(path_text) > width:
             path_text = "…" + path_text[-(width - 1):]
-        self._pane_path_label(pane).update(f"{pane.title.upper()}  {path_text}")
+        loading = "  [LOADING]" if pane.loading else ""
+        self._pane_path_label(pane).update(f"{pane.title.upper()}  {path_text}{loading}")
         self._update_info()
 
     def _update_status(self) -> None:
@@ -613,6 +712,9 @@ class FileCLI(App[None]):
                 self._error(exc)
 
     def action_copy_items(self) -> None:
+        if self.active.loading:
+            self.notify("Wait for the directory listing to finish", severity="warning")
+            return
         items = self._selected_paths()
         if not items:
             return
@@ -666,10 +768,17 @@ class FileCLI(App[None]):
         conflicts = any((destination / item.name).exists() or (destination / item.name).is_symlink() for item in items)
         if conflicts and not confirmed:
             return
+        if self.operation_running:
+            self.notify("Wait for the current file operation to finish", severity="warning")
+            return
         self.operation_cancel.clear()
+        self.operation_running = True
         self._copy_worker(items, destination, confirmed)
 
     def action_move_items(self) -> None:
+        if self.active.loading:
+            self.notify("Wait for the directory listing to finish", severity="warning")
+            return
         items = self._selected_paths()
         if not items:
             return
@@ -684,7 +793,11 @@ class FileCLI(App[None]):
         conflicts = any((destination / item.name).exists() or (destination / item.name).is_symlink() for item in items)
         if conflicts and not confirmed:
             return
+        if self.operation_running:
+            self.notify("Wait for the current file operation to finish", severity="warning")
+            return
         self.operation_cancel.clear()
+        self.operation_running = True
         self._move_worker(items, destination, confirmed)
 
     def _show_move_progress(self, completed: int, total: int) -> None:

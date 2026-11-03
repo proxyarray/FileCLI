@@ -2,6 +2,8 @@
 
 FileCLI by MUSOS INDIA is a keyboard-driven, dual-pane terminal file manager for Linux. The interface uses a black background, white active-panel border and selection, restrained extension colors, aligned file columns, and a persistent function-key toolbar. Files are previewed as data; FileCLI never executes a file on preview.
 
+Current release: **0.2.0**. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+
 ## Requirements and installation
 
 - Python 3.11 or newer
@@ -22,6 +24,8 @@ For development:
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[dev]'
 .venv/bin/pytest
+.venv/bin/python -m pip install build
+.venv/bin/python -m build
 ```
 
 ## Keyboard controls
@@ -69,4 +73,6 @@ The package provides dual-pane browsing, safe basic file operations, recursive f
 - **Permission denied:** FileCLI reports the underlying filesystem error. It does not request or invoke `sudo`; check directory ownership and mount permissions.
 - **Timezone unavailable:** install the system `tzdata` package, or set `timezone` to an installed IANA timezone.
 - **Terminal too small:** increase the terminal dimensions before launching.
-- **Configuration won't load:** inspect the JSON at the path above; remove malformed JSON or run `filecli init-config` only after preserving any desired settings.
+- **Configuration won't load:** FileCLI reports a startup error instead of opening the interface. Inspect the JSON at the path above; preserve a copy before repairing it or running `filecli init-config`.
+- **Slow directory listing:** entries and metadata are collected off the UI thread; very large directories can still take time to enumerate.
+- **Build fails:** use Python 3.11+ with `python3-venv`, upgrade pip in the project virtual environment, then reinstall `.[dev]`.

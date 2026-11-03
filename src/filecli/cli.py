@@ -12,7 +12,7 @@ from .app import FileCLI
 from .logging_config import configure_logging
 from .settings import Settings, save_settings
 
-cli = typer.Typer(add_completion=False, help="DOS-inspired terminal file manager")
+cli = typer.Typer(add_completion=False, help="A dual-pane terminal file manager by MUSOS INDIA")
 
 
 @cli.callback(invoke_without_command=True)
@@ -26,7 +26,12 @@ def main(
     if path is not None and not path.expanduser().is_dir():
         raise typer.BadParameter(f"Not a directory: {path}")
     configure_logging()
-    FileCLI(path.expanduser() if path else None).run()
+    try:
+        app = FileCLI(path.expanduser() if path else None)
+    except (OSError, TypeError, ValueError) as exc:
+        typer.echo(f"FileCLI cannot start: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    app.run()
 
 
 @cli.command()

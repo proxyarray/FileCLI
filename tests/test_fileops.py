@@ -56,6 +56,14 @@ def test_hidden_files_and_sort(tmp_path: Path) -> None:
     assert {item.name for item in list_directory(tmp_path, show_hidden=True)} == {".hidden", "a", "b"}
 
 
+def test_directories_stay_first_when_sorting_descending(tmp_path: Path) -> None:
+    (tmp_path / "folder").mkdir()
+    (tmp_path / "z-file").touch()
+    (tmp_path / "a-file").touch()
+    entries = list_directory(tmp_path, sort_by="name", descending=True)
+    assert [item.name for item in entries] == ["folder", "z-file", "a-file"]
+
+
 def test_protected_delete_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     home.mkdir()
