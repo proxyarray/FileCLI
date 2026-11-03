@@ -7,15 +7,22 @@ from filecli.app import FileCLI, PromptScreen, SettingsEditorScreen
 from filecli.widgets import extension_color, file_name_cell
 
 
+async def wait_for_rows(pilot, table, count: int) -> None:
+    for _ in range(50):
+        if table.row_count == count:
+            return
+        await pilot.pause(0.1)
+    pytest.fail(f"Expected {count} rows, found {table.row_count}")
+
+
 @pytest.mark.asyncio
 async def test_tui_keyboard_navigation_and_resize(tmp_path: Path) -> None:
     (tmp_path / "alpha.txt").write_text("a")
     (tmp_path / "beta.txt").write_text("b")
     app = FileCLI(tmp_path)
     async with app.run_test(size=(100, 30)) as pilot:
-        await pilot.pause(0.3)
         table = app.query_one("#pane-left-table")
-        assert table.row_count == 2
+        await wait_for_rows(pilot, table, 2)
         panes = app.query_one("#panes").region
         brand = app.query_one("#brand").region
         status = app.query_one("#status").region
@@ -96,9 +103,8 @@ async def test_extension_colors_and_f9_open(tmp_path: Path) -> None:
     assert file_name_cell(tmp_path / "source.py", cursor=True).style is None
     app = FileCLI(tmp_path)
     async with app.run_test(size=(100, 30)) as pilot:
-        await pilot.pause(0.3)
         table = app.query_one("#pane-left-table")
-        assert table.row_count == 3
+        await wait_for_rows(pilot, table, 3)
         assert table.get_cell_at(Coordinate(1, 0)).style is not None
         await pilot.press("down")
         await pilot.press("f9")
@@ -112,8 +118,8 @@ async def test_large_directory_and_single_pane_toggle(tmp_path: Path) -> None:
         (tmp_path / f"entry-{index:03}.txt").touch()
     app = FileCLI(tmp_path)
     async with app.run_test(size=(80, 24)) as pilot:
-        await pilot.pause(0.3)
-        assert app.query_one("#pane-left-table").row_count == 250
+        await wait_for_rows(pilot, app.left.table, 250)
+        await wait_for_rows(pilot, app.right.table, 250)
         assert app.right.display is False
 
 
@@ -127,7 +133,7 @@ async def test_copy_and_move_shortcuts_between_panels(tmp_path: Path) -> None:
     app = FileCLI(source)
     app.right.path = destination
     async with app.run_test(size=(120, 30)) as pilot:
-        await pilot.pause(0.3)
+        await wait_for_rows(pilot, app.left.table, 2)
         app.left.loading = True
         await pilot.press("f5")
         await pilot.pause(0.1)

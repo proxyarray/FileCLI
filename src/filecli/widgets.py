@@ -78,6 +78,8 @@ class DirectoryPanel(Vertical):
         super().__init__(id=f"pane-{label.lower()}", classes="directory-panel")
         self.title = label
         self.path = path
+        self.path_label = Static(id=f"{self.id}-path", classes="pane-path")
+        self.table = DataTable(id=f"{self.id}-table", cursor_type="row", zebra_stripes=False)
         self.selected: set[Path] = set()
         self.visible_paths: list[Path] = []
         self.compact_columns = False
@@ -85,8 +87,8 @@ class DirectoryPanel(Vertical):
         self.loading = False
 
     def compose(self) -> ComposeResult:
-        yield Static(id=f"{self.id}-path", classes="pane-path")
-        yield DataTable(id=f"{self.id}-table", cursor_type="row", zebra_stripes=False)
+        yield self.path_label
+        yield self.table
 
 
 class BrandHeader(Static):

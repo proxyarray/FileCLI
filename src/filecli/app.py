@@ -220,6 +220,7 @@ class FileCLI(App[None]):
         self.operation_cancel = threading.Event()
         self.operation_running = False
         self._last_layout_width = -1
+        self.info_panel = FileInformationPanel()
         self._apply_theme()
 
     def _apply_theme(self) -> None:
@@ -238,7 +239,7 @@ class FileCLI(App[None]):
         with Horizontal(id="panes"):
             yield self.left
             yield self.right
-        yield FileInformationPanel()
+        yield self.info_panel
         yield Static(id="message")
         yield FunctionToolbar()
 
@@ -253,10 +254,10 @@ class FileCLI(App[None]):
         self._focus_active()
 
     def _table(self, pane: DirectoryPanel) -> DataTable:
-        return self.query_one(f"#{pane.id}-table", DataTable)
+        return pane.table
 
     def _pane_path_label(self, pane: DirectoryPanel) -> Static:
-        return self.query_one(f"#{pane.id}-path", Static)
+        return pane.path_label
 
     @property
     def active(self) -> DirectoryPanel:
@@ -499,7 +500,7 @@ class FileCLI(App[None]):
     def _update_info(self) -> None:
         path = self._selected_path()
         if path is None or not path.exists() and not path.is_symlink():
-            self.query_one("#info", FileInformationPanel).update("No item selected")
+            self.info_panel.update("No item selected")
             return
         try:
             info = path.lstat()
@@ -508,9 +509,9 @@ class FileCLI(App[None]):
             details = f"{path.name}  |  {kind}  |  {size}  |  {format_timestamp(info.st_mtime, self.settings)}  |  {stat.filemode(info.st_mode)}"
             if path.is_symlink():
                 details += f"  -> {path.readlink()}"
-            self.query_one("#info", FileInformationPanel).update(details)
+            self.info_panel.update(details)
         except OSError as exc:
-            self.query_one("#info", FileInformationPanel).update(f"Cannot inspect selection: {exc}")
+            self.info_panel.update(f"Cannot inspect selection: {exc}")
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if event.data_table.has_focus:
